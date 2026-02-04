@@ -1,0 +1,140 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VIP Admin</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 30px auto; padding: 0 12px; }
+    input, button { padding: 10px; margin: 6px 0; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 14px; margin-top: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border-bottom: 1px solid #eee; padding: 10px; text-align: left; }
+    .ok { color: green; }
+    .bad { color: #b00020; }
+  </style>
+</head>
+<body>
+  <h2>VIP Account Admin</h2>
+
+  <div class="card">
+    <div class="row">
+      <input id="apiBase" placeholder="API Base URL (e.g. https://your-app.onrender.com)" style="flex:1; min-width: 320px;" />
+      <input id="secret" placeholder="Admin Secret" style="flex:1; min-width: 220px;" />
+      <button onclick="saveSettings()">Save</button>
+    </div>
+    <div id="status"></div>
+  </div>
+
+  <div class="card">
+    <h3>Add VIP Account</h3>
+    <div class="row">
+      <input id="login" placeholder="MT5 Login (Account ID)" />
+      <input id="note" placeholder="Note (optional)" style="flex:1; min-width: 260px;" />
+      <button onclick="addVip()">Add</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Remove VIP Account</h3>
+    <div class="row">
+      <input id="removeLogin" placeholder="MT5 Login to remove" />
+      <button onclick="removeVip()">Remove</button>
+      <button onclick="loadList()">Refresh List</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Login</th><th>Note</th><th>Created</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+<script>
+  function $(id){ return document.getElementById(id); }
+
+  function saveSettings(){
+    localStorage.setItem("vip_apiBase", $("apiBase").value.trim());
+    localStorage.setItem("vip_secret", $("secret").value.trim());
+    setStatus("Saved ✅", true);
+  }
+
+  function loadSettings(){
+    $("apiBase").value = localStorage.getItem("vip_apiBase") || "";
+    $("secret").value = localStorage.getItem("vip_secret") || "";
+  }
+
+  function setStatus(msg, ok){
+    $("status").innerHTML = `<p class="${ok ? "ok" : "bad"}">${msg}</p>`;
+  }
+
+  async function loadList(){
+    const base = $("apiBase").value.trim();
+    const secret = $("secret").value.trim();
+    if(!base || !secret) return setStatus("Set API Base + Admin Secret first.", false);
+
+    const r = await fetch(`${base}/api/admin/list`, {
+      headers: { "x-admin-secret": secret }
+    });
+    const j = await r.json();
+    if(!j.ok) return setStatus(j.error || "Failed to load list", false);
+
+    const tbody = $("rows");
+    tbody.innerHTML = "";
+    j.rows.forEach(x => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${x.login}</td><td>${x.note||""}</td><td>${x.created_at||""}</td>`;
+      tbody.appendChild(tr);
+    });
+
+    setStatus(`Loaded ${j.rows.length} VIP accounts ✅`, true);
+  }
+
+  async function addVip(){
+    const base = $("apiBase").value.trim();
+    const secret = $("secret").value.trim();
+    const login = $("login").value.trim();
+    const note = $("note").value.trim();
+    if(!base || !secret) return setStatus("Set API Base + Admin Secret first.", false);
+    if(!login) return setStatus("Enter a login.", false);
+
+    const r = await fetch(`${base}/api/admin/add`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+      body: JSON.stringify({ login, note })
+    });
+    const j = await r.json();
+    if(!j.ok) return setStatus(j.error || "Add failed", false);
+
+    $("login").value = "";
+    $("note").value = "";
+    setStatus(`Added ${j.added} ✅`, true);
+    loadList();
+  }
+
+  async function removeVip(){
+    const base = $("apiBase").value.trim();
+    const secret = $("secret").value.trim();
+    const login = $("removeLogin").value.trim();
+    if(!base || !secret) return setStatus("Set API Base + Admin Secret first.", false);
+    if(!login) return setStatus("Enter a login to remove.", false);
+
+    const r = await fetch(`${base}/api/admin/remove`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+      body: JSON.stringify({ login })
+    });
+    const j = await r.json();
+    if(!j.ok) return setStatus(j.error || "Remove failed", false);
+
+    $("removeLogin").value = "";
+    setStatus(`Removed ${j.removed} ✅`, true);
+    loadList();
+  }
+
+  loadSettings();
+</script>
+</body>
+</html>
