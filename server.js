@@ -17,9 +17,12 @@ const db = new Database(DB_PATH);
 db.exec(`
   CREATE TABLE IF NOT EXISTS vip_accounts (
     login TEXT PRIMARY KEY,
-    note TEXT,
+    tier  TEXT NOT NULL DEFAULT 'VIP',
+    note  TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE INDEX IF NOT EXISTS idx_vip_accounts_tier ON vip_accounts (tier);
 `);
 
 function requireAdmin(req, res, next) {
@@ -76,3 +79,4 @@ app.use("/admin", express.static(path.join(__dirname, "admin")));
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log("VIP API listening on", PORT));
+
