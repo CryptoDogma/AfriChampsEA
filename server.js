@@ -98,7 +98,6 @@ app.get("/api/check/:login", (req, res) => {
   const allowed = userRank >= requiredRank;
 
   return res.json({
-    ok: true,
     allowed,
     login,
     userTier,
@@ -159,4 +158,5 @@ app.use("/admin", express.static(path.join(__dirname, "admin")));
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log("VIP API listening on", PORT));
+
 
