@@ -30,8 +30,15 @@ function hasColumn(table, column) {
 // Migration: add tier column if missing (for older DBs)
 if (!hasColumn("vip_accounts", "tier")) {
   console.log("🔧 Migrating DB: adding tier column...");
-  db.exec(`ALTER TABLE vip_accounts ADD COLUMN tier TEXT NOT NULL DEFAULT 'VIP';`);
+  db.exec(`ALTER TABLE vip_accounts ADD COLUMN tier TEXT NOT NULL DEFAULT 'AFFILIATE';`);
 }
+// Force all existing users to AFFILIATE (one-time reset)
+db.prepare(`
+  UPDATE vip_accounts
+  SET tier = 'AFFILIATE'
+`).run();
+
+console.log("✅ All existing users set to AFFILIATE");
 
 // Create index after ensuring the column exists
 db.exec(`CREATE INDEX IF NOT EXISTS idx_vip_accounts_tier ON vip_accounts (tier);`);
@@ -145,6 +152,7 @@ app.use("/admin", express.static(path.join(__dirname, "admin")));
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log("VIP API listening on", PORT));
+
 
 
 
