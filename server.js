@@ -37,12 +37,55 @@ function requireAdmin(req, res, next) {
 app.get("/", (req, res) => res.send("VIP API is running ✅"));
 
 // EA check endpoint (public)
+const TIER_RANK = {
+  AFFILIATE: 1,
+  VIP: 2,
+  MASTER: 3,
+  ELITE: 4
+};
+
+function normalizeTier(t) {
+  return String(t || "").trim().toUpperCase();
+}
+
+// EA check endpoint with hierarchy:
+// /api/check/123456?tier=VIP  -> allow if client's tier rank >= VIP rank
 app.get("/api/check/:login", (req, res) => {
   const login = String(req.params.login || "").trim();
-  if (!login) return res.status(400).json({ ok: false, vip: false, error: "Missing login" });
+  const requiredTier = normalizeTier(req.query.tier || "AFFILIATE"); // default lowest
 
-  const row = db.prepare("SELECT login FROM vip_accounts WHERE login = ?").get(login);
-  return res.json({ ok: true, vip: !!row, login });
+  if (!login) return res.status(400).json({ ok: false, allowed: false, error: "Missing login" });
+  if (!TIER_RANK[requiredTier]) {
+    return res.status(400).json({ ok: false, allowed: false, error: "Invalid required tier" });
+  }
+
+  const row = db.prepare("SELECT login, tier FROM vip_accounts WHERE login = ?").get(login);
+
+  if (!row) {
+    return res.json({
+      ok: true,
+      allowed: false,
+      reason: "NOT_FOUND",
+      login,
+      requiredTier
+    });
+  }
+
+  const userTier = normalizeTier(row.tier);
+  const userRank = TIER_RANK[userTier] || 0;
+  const reqRank = TIER_RANK[requiredTier];
+
+  const allowed = userRank >= reqRank;
+
+  return res.json({
+    ok: true,
+    allowed,
+    login,
+    userTier,
+    requiredTier,
+    userRank,
+    requiredRank: reqRank
+  });
 });
 
 // Admin list
@@ -79,4 +122,5 @@ app.use("/admin", express.static(path.join(__dirname, "admin")));
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log("VIP API listening on", PORT));
+
 
