@@ -84,7 +84,6 @@ app.get("/api/check/:login", (req, res) => {
 
   if (!row) {
     return res.json({
-      ok: true,
       allowed: false,
       reason: "NOT_FOUND",
       login,
@@ -160,3 +159,4 @@ app.use("/admin", express.static(path.join(__dirname, "admin")));
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log("VIP API listening on", PORT));
+
