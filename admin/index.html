@@ -19,6 +19,7 @@
       --shadow: 0 10px 30px rgba(0,0,0,.35);
       --radius:16px;
     }
+    .btn.small { padding: 8px 10px; font-size: 12px; }
 
     *{ box-sizing:border-box; }
     body{
@@ -345,7 +346,7 @@ tr.innerHTML = `
   <td>${x.note||""}</td>
   <td>${x.created_at||""}</td>
   <td>
-    <button class="btn" onclick="prefillEdit('${x.login}','${(x.tier||"VIP").toUpperCase()}','${safeNote}')">
+    <button class="btn small" onclick="prefillEdit('${x.login}','${(x.tier||"VIP").toUpperCase()}','${safeNote}')">
       Edit / Change Tier
     </button>
   </td>`;
@@ -405,6 +406,7 @@ tr.innerHTML = `
 </script>
 </body>
 </html>
+
 
 
 
