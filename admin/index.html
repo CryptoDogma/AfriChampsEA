@@ -273,6 +273,7 @@
               <th>Tier</th>
               <th>Note</th>
               <th>Created</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="rows"></tbody>
@@ -314,7 +315,13 @@
       setStatus("Cannot reach API. Check URL and Render status.", false);
     }
   }
-
+  function prefillEdit(login, tier, note){
+  $("login").value = login;
+  $("tier").value = tier;
+  $("note").value = note || "";
+  setStatus(`Editing ${login} — choose a new tier and click “Save Client”.`, true);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
   async function loadList(){
     const base = $("apiBase").value.trim();
     const secret = $("secret").value.trim();
@@ -327,16 +334,22 @@
     const r = await fetch(url, { headers: { "x-admin-secret": secret } });
     const j = await r.json();
     if(!j.ok) return setStatus(j.error || "Failed to load list", false);
-
     const tbody = $("rows");
     tbody.innerHTML = "";
     j.rows.forEach(x => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${x.login}</td>
-        <td><span class="pill">${(x.tier||"").toUpperCase()}</span></td>
-        <td>${x.note||""}</td>
-        <td>${x.created_at||""}</td>`;
+      const safeNote = (x.note || "").replace(/'/g, "&#39;");
+tr.innerHTML = `
+  <td>${x.login}</td>
+  <td><span class="pill">${(x.tier||"").toUpperCase()}</span></td>
+  <td>${x.note||""}</td>
+  <td>${x.created_at||""}</td>
+  <td>
+    <button class="btn" onclick="prefillEdit('${x.login}','${(x.tier||"VIP").toUpperCase()}','${safeNote}')">
+      Edit / Change Tier
+    </button>
+  </td>`;
+;
       tbody.appendChild(tr);
     });
 
@@ -392,6 +405,7 @@
 </script>
 </body>
 </html>
+
 
 
 
