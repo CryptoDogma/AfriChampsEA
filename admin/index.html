@@ -92,27 +92,29 @@
     setStatus(`Loaded ${j.rows.length} VIP accounts ✅`, true);
   }
 
-  async function addVip(){
-    const base = $("apiBase").value.trim();
-    const secret = $("secret").value.trim();
-    const login = $("login").value.trim();
-    const note = $("note").value.trim();
-    if(!base || !secret) return setStatus("Set API Base + Admin Secret first.", false);
-    if(!login) return setStatus("Enter a login.", false);
+async function addVip(){
+  const base = $("apiBase").value.trim();
+  const secret = $("secret").value.trim();
+  const login = $("login").value.trim();
+  const tier = $("tier").value.trim();
+  const note = $("note").value.trim();
 
-    const r = await fetch(`${base}/api/admin/add`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-admin-secret": secret },
-      body: JSON.stringify({ login, note })
-    });
-    const j = await r.json();
-    if(!j.ok) return setStatus(j.error || "Add failed", false);
+  if(!base || !secret) return setStatus("Set API Base + Admin Secret first.", false);
+  if(!login) return setStatus("Enter a login.", false);
 
-    $("login").value = "";
-    $("note").value = "";
-    setStatus(`Added ${j.added} ✅`, true);
-    loadList();
-  }
+  const r = await fetch(`${base}/api/admin/add`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+    body: JSON.stringify({ login, tier, note })
+  });
+  const j = await r.json();
+  if(!j.ok) return setStatus(j.error || "Add failed", false);
+
+  $("login").value = "";
+  $("note").value = "";
+  setStatus(`Added ${j.added} (${j.tier}) ✅`, true);
+  loadList();
+}
 
   async function removeVip(){
     const base = $("apiBase").value.trim();
@@ -138,3 +140,4 @@
 </script>
 </body>
 </html>
+
