@@ -7,42 +7,56 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Render persistent disk example: /data
+// Render persistent disk
 const DB_PATH = process.env.DB_PATH || "/data/vip.sqlite";
 const ADMIN_SECRET = process.env.ADMIN_SECRET || "CHANGE_ME_NOW";
 
 const db = new Database(DB_PATH);
 
-// --- Ensure base table exists (old installs may not have tier column yet)
-db.exec(`
-  CREATE TABLE IF NOT EXISTS vip_accounts (
-    login TEXT PRIMARY KEY,
-    note  TEXT,
-    created_at TEXT DEFAULT (datetime('now'))
-  );
-`);
+// ----- Tier logic
+const TIER_RANK = {
+  AFFILIATE: 1,
+  VIP: 2,
+  MASTER: 3,
+  ELITE: 4
+};
+const VALID_TIERS = Object.keys(TIER_RANK);
+
+function normalizeTier(t) {
+  return String(t || "").trim().toUpperCase();
+}
 
 function hasColumn(table, column) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all();
   return cols.some(c => String(c.name).toLowerCase() === String(column).toLowerCase());
 }
 
-console.log("✅ All existing users set to AFFILIATE");
-
-// Create index after ensuring the column exists
-db.exec(`CREATE INDEX IF NOT EXISTS idx_vip_accounts_tier ON vip_accounts (tier);`);
-
-// Create table
+// ----- Create base table (old format)
 db.exec(`
   CREATE TABLE IF NOT EXISTS vip_accounts (
     login TEXT PRIMARY KEY,
-    tier  TEXT NOT NULL DEFAULT 'VIP',
     note  TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   );
-
-  CREATE INDEX IF NOT EXISTS idx_vip_accounts_tier ON vip_accounts (tier);
 `);
+
+// ----- Migration: add tier if missing (old DBs)
+if (!hasColumn("vip_accounts", "tier")) {
+  console.log("🔧 Migrating DB: adding tier column...");
+  db.exec(`ALTER TABLE vip_accounts ADD COLUMN tier TEXT NOT NULL DEFAULT 'AFFILIATE';`);
+}
+
+// ----- Backfill: if any tier is blank/null, set to AFFILIATE
+db.prepare(`
+  UPDATE vip_accounts
+  SET tier = 'AFFILIATE'
+  WHERE tier IS NULL OR TRIM(tier) = ''
+`).run();
+
+console.log("✅ DB ready (tier enabled).");
+
+// Index after tier exists
+db.exec(`CREATE INDEX IF NOT EXISTS idx_vip_accounts_tier ON vip_accounts (tier);`);
 
 function requireAdmin(req, res, next) {
   const secret = req.headers["x-admin-secret"];
@@ -55,23 +69,11 @@ function requireAdmin(req, res, next) {
 // Health check
 app.get("/", (req, res) => res.send("VIP API is running ✅"));
 
-// EA check endpoint (public)
-const TIER_RANK = {
-  AFFILIATE: 1,
-  VIP: 2,
-  MASTER: 3,
-  ELITE: 4
-};
-
-function normalizeTier(t) {
-  return String(t || "").trim().toUpperCase();
-}
-
-// EA check endpoint with hierarchy:
-// /api/check/123456?tier=VIP  -> allow if client's tier rank >= VIP rank
+// ----- EA check endpoint with hierarchy
+// /api/check/123456?tier=VIP -> allowed if userRank >= requiredRank
 app.get("/api/check/:login", (req, res) => {
   const login = String(req.params.login || "").trim();
-  const requiredTier = normalizeTier(req.query.tier || "AFFILIATE"); // default lowest
+  const requiredTier = normalizeTier(req.query.tier || "AFFILIATE");
 
   if (!login) return res.status(400).json({ ok: false, allowed: false, error: "Missing login" });
   if (!TIER_RANK[requiredTier]) {
@@ -92,9 +94,9 @@ app.get("/api/check/:login", (req, res) => {
 
   const userTier = normalizeTier(row.tier);
   const userRank = TIER_RANK[userTier] || 0;
-  const reqRank = TIER_RANK[requiredTier];
+  const requiredRank = TIER_RANK[requiredTier];
 
-  const allowed = userRank >= reqRank;
+  const allowed = userRank >= requiredRank;
 
   return res.json({
     ok: true,
@@ -103,31 +105,48 @@ app.get("/api/check/:login", (req, res) => {
     userTier,
     requiredTier,
     userRank,
-    requiredRank: reqRank
+    requiredRank
   });
 });
 
-// Admin list
+// ----- Admin list (returns tier)
 app.get("/api/admin/list", requireAdmin, (req, res) => {
-  const rows = db.prepare("SELECT login, note, created_at FROM vip_accounts ORDER BY created_at DESC").all();
+  const tierQ = normalizeTier(req.query.tier || "");
+  let rows;
+
+  if (tierQ) {
+    rows = db.prepare(
+      "SELECT login, tier, note, created_at FROM vip_accounts WHERE UPPER(tier)=? ORDER BY created_at DESC"
+    ).all(tierQ);
+  } else {
+    rows = db.prepare(
+      "SELECT login, tier, note, created_at FROM vip_accounts ORDER BY created_at DESC"
+    ).all();
+  }
+
   res.json({ ok: true, rows });
 });
 
-// Admin add
+// ----- Admin add (saves tier)
 app.post("/api/admin/add", requireAdmin, (req, res) => {
   const login = String(req.body.login || "").trim();
+  const tier = normalizeTier(req.body.tier || "AFFILIATE");
   const note = String(req.body.note || "").trim();
+
   if (!login) return res.status(400).json({ ok: false, error: "Missing login" });
+  if (!VALID_TIERS.includes(tier)) return res.status(400).json({ ok: false, error: "Invalid tier" });
 
   try {
-    db.prepare("INSERT OR REPLACE INTO vip_accounts (login, note) VALUES (?, ?)").run(login, note);
-    res.json({ ok: true, added: login });
+    db.prepare("INSERT OR REPLACE INTO vip_accounts (login, tier, note) VALUES (?, ?, ?)")
+      .run(login, tier, note);
+
+    res.json({ ok: true, added: login, tier });
   } catch (e) {
     res.status(500).json({ ok: false, error: "DB error" });
   }
 });
 
-// Admin remove
+// ----- Admin remove
 app.post("/api/admin/remove", requireAdmin, (req, res) => {
   const login = String(req.body.login || "").trim();
   if (!login) return res.status(400).json({ ok: false, error: "Missing login" });
@@ -136,13 +155,8 @@ app.post("/api/admin/remove", requireAdmin, (req, res) => {
   res.json({ ok: true, removed: login });
 });
 
-// Serve the admin UI (optional)
+// Serve admin UI
 app.use("/admin", express.static(path.join(__dirname, "admin")));
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log("VIP API listening on", PORT));
-
-
-
-
-
