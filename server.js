@@ -13,6 +13,29 @@ const ADMIN_SECRET = process.env.ADMIN_SECRET || "CHANGE_ME_NOW";
 
 const db = new Database(DB_PATH);
 
+// --- Ensure base table exists (old installs may not have tier column yet)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS vip_accounts (
+    login TEXT PRIMARY KEY,
+    note  TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+`);
+
+function hasColumn(table, column) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  return cols.some(c => String(c.name).toLowerCase() === String(column).toLowerCase());
+}
+
+// Migration: add tier column if missing (for older DBs)
+if (!hasColumn("vip_accounts", "tier")) {
+  console.log("🔧 Migrating DB: adding tier column...");
+  db.exec(`ALTER TABLE vip_accounts ADD COLUMN tier TEXT NOT NULL DEFAULT 'VIP';`);
+}
+
+// Create index after ensuring the column exists
+db.exec(`CREATE INDEX IF NOT EXISTS idx_vip_accounts_tier ON vip_accounts (tier);`);
+
 // Create table
 db.exec(`
   CREATE TABLE IF NOT EXISTS vip_accounts (
@@ -122,5 +145,6 @@ app.use("/admin", express.static(path.join(__dirname, "admin")));
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log("VIP API listening on", PORT));
+
 
 
